@@ -10,29 +10,31 @@
 #include <iomanip>
 #include <stdint.h>
 
-std::vector<double> ReadWF(std::string filename);
-std::vector<double> Deconvolute(std::vector<double> wf, double f);
-std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M);
-std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L);
-std::vector<double> MWD(std::vector<double> wf, double f, uint32_t M, uint32_t L){
-  return MovingAverage(OffsetDifferentiate(Deconvolute(wf, f), M), L);
+std::vector<double> ReadWF(std::string filename, double * time=NULL);
+std::vector<double> Deconvolute(std::vector<double> wf, double f, double * time=NULL);
+std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M, double * time=NULL);
+std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L, double * time=NULL);
+std::vector<double> MWD(std::vector<double> wf, double f, uint32_t M, uint32_t L,
+    double * tDeconv=NULL, double * tDiff=NULL, double * tMavg=NULL){
+  return MovingAverage(OffsetDifferentiate(Deconvolute(wf, f, tMavg), M, tDiff), L, tDeconv);
 }
 
 int main(int argc, char *argv[]) {
-  std::vector<double> wf0 = ReadWF("samples/purdue_full_wf0.csv");
-  std::vector<double> mwd = MWD(wf0, 0.999993, 6000, 600);
-  for (uint32_t i = 0; i < mwd.size(); ++i) {
-    // std::cout << mwd.at(i) << ",";
-    std::cout << mwd.at(i) << std::endl;
-  }
+    
+  double readTime;
+  std::vector<double> wf0 = ReadWF("samples/purdue_full_wf0.csv", &readTime);
+  std::cout << "read: " << readTime << std::endl;
+  double tDeconv, tDiff, tMavg;
+  std::cout << "deconv,diff,mavg" << std::endl;
+  std::vector<double> mwd = MWD(wf0, 0.999993, 6000, 600, &tDeconv, &tDiff, &tMavg);
+  std::cout << tDeconv << "," << tDiff << "," << tMavg<< std::endl;
 
-  std::cout << std::endl;
   return 0;
 }
 
-std::vector<double> ReadWF(std::string filename){
+std::vector<double> ReadWF(std::string filename, double * time){
   std::vector<double> wf0;
-	auto readStart = std::chrono::high_resolution_clock::now();
+	auto start = std::chrono::high_resolution_clock::now();
   std::ifstream inputFile(filename);
   std::string line;
   while (std::getline(inputFile, line)){
@@ -46,45 +48,54 @@ std::vector<double> ReadWF(std::string filename){
       save = !save;
     }
   }
-	auto readStop = std::chrono::high_resolution_clock::now();
-	auto readDuration = 
-    std::chrono::duration_cast<std::chrono::milliseconds> (readStop - readStart);
-
-  std::cout << "Read in " << wf0.size() << " samples" << std::endl;
-  std::cout << " in " << readDuration.count() <<" ms"<< std::endl;
+	auto stop = std::chrono::high_resolution_clock::now();
+	auto duration = 
+    std::chrono::duration_cast<std::chrono::milliseconds> (stop - start);
+  *time = duration.count();
   return wf0;
 }
 
 
-std::vector<double> Deconvolute(std::vector<double> wf, double f){
+std::vector<double> Deconvolute(std::vector<double> wf, double f, double * time){
   if (wf.size() <= 2) {
     return wf;
   }
+	auto start = std::chrono::high_resolution_clock::now();
   std::vector<double> A;
   A.push_back(wf.at(0));
   for (uint32_t i = 1; i < wf.size(); ++i) {
     A.push_back(wf.at(i) - f*wf.at(i-1) + A.at(i-1));
   }
 
+	auto stop = std::chrono::high_resolution_clock::now();
+	auto duration = 
+    std::chrono::duration_cast<std::chrono::milliseconds> (stop - start);
+  *time = duration.count();
   return A;
 }
 
-std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M){
+std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M, double * time){
   if (wf.size() <= M) {
     return wf;
   }
+	auto start = std::chrono::high_resolution_clock::now();
   std::vector<double> D;
   for (uint32_t i = M; i < wf.size(); ++i) {
     D.push_back(wf.at(i) - wf.at(i-M));
   }
+	auto stop = std::chrono::high_resolution_clock::now();
+	auto duration = 
+    std::chrono::duration_cast<std::chrono::milliseconds> (stop - start);
+  *time = duration.count();
   return D;
 }
 
-std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L){
+std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L, double * time){
   if (wf.size() <= L) {
     return wf;
   }
 
+	auto start = std::chrono::high_resolution_clock::now();
   double sum = 0.;
   std::vector<double> MA;
   for (uint32_t i = 0; i < L; ++i) {
@@ -96,5 +107,9 @@ std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L){
     sum += wf.at(i) - wf.at(i - L);
     MA.push_back(sum / L);
   }
+	auto stop = std::chrono::high_resolution_clock::now();
+	auto duration = 
+    std::chrono::duration_cast<std::chrono::milliseconds> (stop - start);
+  *time = duration.count();
   return MA;
 }
