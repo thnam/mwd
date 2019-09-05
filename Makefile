@@ -1,10 +1,27 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -g
+LDFLAGS =
 TARGET = mwd
+
+SRCDIR = ./srcs
+OBJDIR = ./objs
+INCS = -I$(SRCDIR)/
+SRCS = $(wildcard $(SRCDIR)/*.cc)
+OBJS = $(patsubst $(SRCDIR)/%.cc,$(OBJDIR)/%.o,$(SRCS))
+OBJS += $(OBJDIR)/$(TARGET).o
+
 all: $(TARGET)
 
-$(TARGET): $(TARGET).cc
-	$(CXX) $(CXXFLAGS) $< -o $@
+$(TARGET): $(OBJS)
+	$(CXX) -o $@ $(LDFLAGS) $^ 
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.cc
+	@mkdir -p $(OBJDIR)
+	$(CXX) $(INCS) $(CXXFLAGS) -c $< -o $@
+
+$(OBJDIR)/%.o: %.cc
+	@mkdir -p $(OBJDIR)
+	$(CXX) $(INCS) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(TARGET) *.o
+	rm -rf $(TARGET) $(OBJS)
