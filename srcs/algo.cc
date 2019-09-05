@@ -20,7 +20,8 @@ std::vector<double> Deconvolute(std::vector<double> wf, double f, double * time)
   return A;
 }
 
-std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M, double * time){
+std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M,
+    double * time){
   if (wf.size() <= M) {
     return wf;
   }
@@ -36,7 +37,8 @@ std::vector<double> OffsetDifferentiate(std::vector<double> wf, uint32_t M, doub
   return D;
 }
 
-std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L, double * time){
+std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L,
+    double * time){
   if (wf.size() <= L) {
     return wf;
   }
@@ -60,8 +62,8 @@ std::vector<double> MovingAverage(std::vector<double> wf, uint32_t L, double * t
   return MA;
 }
 
-std::vector<double> MWD(std::vector<double> wf, double f, uint32_t M, uint32_t L,
-    double * tDeconv, double * tDiff, double * tMavg)
-{
-  return MovingAverage(OffsetDifferentiate(Deconvolute(wf, f, tMavg), M, tDiff), L, tDeconv);
+std::vector<double> MWD(std::vector<double> wf, double f, uint32_t M,
+    uint32_t L, double * tDeconv, double * tDiff, double * tMavg) {
+  return MovingAverage(
+      OffsetDifferentiate(Deconvolute(wf, f, tMavg), M, tDiff), L, tDeconv);
 }
