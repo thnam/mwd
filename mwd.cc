@@ -19,10 +19,17 @@ int main(int argc, char *argv[]) {
   double readTime;
   std::vector<double> wf0 = ReadWF("samples/purdue_full_wf0.csv", &readTime);
   std::cout << "read: " << readTime << std::endl;
-  double tDeconv, tDiff, tMavg;
-  std::cout << "deconv,diff,mavg" << std::endl;
-  std::vector<double> mwd = MWD(wf0, 0.999993, 6000, 600, &tDeconv, &tDiff, &tMavg);
-  std::cout << tDeconv << "," << tDiff << "," << tMavg<< std::endl;
+
+  Waveform * wf = (Waveform *) malloc(sizeof(uint32_t) + wf0.size() * sizeof(double));
+  wf->size = wf0.size();
+  for (uint32_t i = 0; i < wf0.size(); ++i) {
+    wf->samples[i] = wf0.at(i);
+  }
+  Waveform * mwd = MWD(wf, 0.999993, 6000, 600);
+  for (int i = 0; i < mwd->size; ++i) {
+    std::cout << mwd->samples[i] << std::endl;
+  }
+  // std::cout << tDeconv << "," << tDiff << "," << tMavg<< std::endl;
 
   return 0;
 }
