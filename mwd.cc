@@ -21,11 +21,13 @@ int main(int argc, char *argv[]) {
   std::cout << "read: " << readTime << std::endl;
 
   Waveform * wf = (Waveform *) malloc(sizeof(uint32_t) + wf0.size() * sizeof(double));
-  wf->size = wf0.size();
-  for (uint32_t i = 0; i < wf0.size(); ++i) {
+  // wf->size = wf0.size();
+  wf->size = 16852;
+  for (uint32_t i = 0; i < wf->size; ++i) {
     wf->samples[i] = wf0.at(i);
   }
-  Waveform * mwd = MWD(wf, 0.999993, 6000, 600);
+
+  Waveform * mwd = MWD(wf, 0.999993, 5, 5);
   for (int i = 0; i < mwd->size; ++i) {
     std::cout << mwd->samples[i] << std::endl;
   }
