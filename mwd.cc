@@ -10,7 +10,9 @@
 #include <iomanip>
 #include <stdint.h>
 
+extern "C" {
 #include "algo.h"
+}
 
 std::vector<double> ReadWF(std::string filename, double * time=NULL);
 
