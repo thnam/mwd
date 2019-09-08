@@ -8,14 +8,12 @@ Vector * Deconvolute(Vector * wf, double f){
   }
 
   // the output waveform has the same length as that of the input
-  Vector * A = (Vector*)malloc(sizeof(uint32_t) + sizeof(double) * wf->size);
+  Vector * A = VectorInit();
 
-  A->samples[0] = wf->samples[0];
-  A->size = 1;
+  VectorAppend(A, wf->data[0]);
 
   for (uint32_t i = 1; i < wf->size; ++i) {
-    A->samples[i] = wf->samples[i] - f*wf->samples[i-1] + A->samples[i-1];
-    A->size++;
+    VectorAppend(A, wf->data[i] - f*wf->data[i-1] + A->data[i-1]);
   }
 
   return A;
@@ -26,12 +24,11 @@ Vector * OffsetDifferentiate(Vector * wf, uint32_t M){
     return wf;
   }
 
-  // size of original waveform less M samples
-  Vector * D = (Vector *) malloc(sizeof(uint32_t) + (wf->size - M) * sizeof(double));
-  D->size = 0;
+  // size of original waveform less M data
+  Vector * D = VectorInit();
+  /* Vector * D = (Vector *) malloc(2*sizeof(uint32_t) + (wf->size - M) * sizeof(double)); */
   for (uint32_t i = M; i < wf->size; ++i) {
-    D->samples[i - M] = wf->samples[i] - wf->samples[i - M];
-    D->size++;
+    VectorAppend(D, wf->data[i] - wf->data[i - M]);
   }
   return D;
 }
@@ -42,17 +39,16 @@ Vector * MovingAverage(Vector * wf, uint32_t L){
   }
 
   double sum = 0.;
-  Vector * MA = (Vector *) malloc(sizeof(uint32_t) + (wf->size - L) * sizeof(double));
+  /* Vector * MA = (Vector *) malloc(2*sizeof(uint32_t) + (wf->size - L) * sizeof(double)); */
+  Vector * MA = VectorInit();
   for (uint32_t i = 0; i < L; ++i) {
-    sum += wf->samples[i];
+    sum += wf->data[i];
   }
-  MA->samples[0] = sum / L;
-  MA->size = 1;
+  VectorAppend(MA, sum / L);
 
   for (uint32_t i = L; i < wf->size; ++i) {
-    sum += wf->samples[i] - wf->samples[i - L];
-    MA->samples[i - L + 1] = sum / L;
-    MA->size++;
+    sum += wf->data[i] - wf->data[i - L];
+    VectorAppend(MA, sum / L);
   }
   return MA;
 }
@@ -61,3 +57,33 @@ Vector * MWD(Vector * wf,  double f, uint32_t M, uint32_t L){
   return MovingAverage(
       OffsetDifferentiate(Deconvolute(wf, f), M), L);
 }
+
+Vector * VectorInit(){
+  Vector * A = (Vector*)malloc(2*sizeof(uint32_t)); 
+  A->size = 0;
+  A->capacity = VECTOR_INITIAL_CAPACITY;
+  A->data = malloc(sizeof(double) * VECTOR_INITIAL_CAPACITY);
+
+  return A;
+}
+
+
+void VectorAppend(Vector *vector, double value){
+  VectorExpand(vector);
+  vector->data[vector->size++] = value;
+}
+
+double VectorGet(Vector *vector, uint32_t index){
+  return 0;
+}
+
+void VectorSet(Vector *vector, uint32_t index, double value){}
+void VectorExpand(Vector *vector){
+  if (vector->size >= vector->capacity) {
+    vector->capacity = (int)(VECTOR_GROWING_FACTOR * vector->capacity);
+    /* vector = (Vector *) realloc(vector, 2 * sizeof(uint32_t) + sizeof(double) * vector->capacity); */
+    vector->data = realloc(vector->data, sizeof(double) * vector->capacity);
+  }
+}
+
+void VectorFree(Vector *vector){}

@@ -4,7 +4,7 @@
 
 #include "algo.h"
 
-#define NsamplesMax 1000 * 1000
+#define NdataMax 1000 * 1000
 
 Vector * ReadWF(const char * filename);
 
@@ -13,15 +13,14 @@ int main(int argc, char *argv[]) {
 
   Vector * mwd = MWD(wf, 0.999993, 6000, 600);
   for (uint32_t i = 0; i < mwd->size; ++i) {
-    printf("%.8lf\n", mwd->samples[i]);
+    printf("%.9lf\n", mwd->data[i]);
   }
 
   return 0;
 }
 
 Vector * ReadWF(const char *filename){
-
-  Vector * wf0 = (Vector*) malloc(sizeof(uint32_t) + NsamplesMax * sizeof(double));
+  Vector * wf0 = VectorInit();
   FILE *fp = fopen(filename, "r");
   if (fp == NULL) {
     printf("Cannot open file.\n");
@@ -30,8 +29,7 @@ Vector * ReadWF(const char *filename){
 
   double val0, val1;
   while (fscanf(fp, "%lf,%lf", &val0, &val1) == 2) {
-    wf0->samples[wf0->size] = val1;
-    wf0->size++;
+    VectorAppend(wf0, val1);
   }
   return wf0;
 }
