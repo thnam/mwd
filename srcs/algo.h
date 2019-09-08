@@ -7,9 +7,9 @@ typedef struct Waveform {
   double samples[];
 } Waveform;
 
-extern Waveform * Deconvolute(Waveform * wf, double f);
-extern Waveform * OffsetDifferentiate(Waveform * wf, uint32_t M);
-extern Waveform * MovingAverage(Waveform * wf, uint32_t L);
-extern Waveform * MWD(Waveform * wf,  double f, uint32_t M, uint32_t L);
+Waveform * Deconvolute(Waveform * wf, double f);
+Waveform * OffsetDifferentiate(Waveform * wf, uint32_t M);
+Waveform * MovingAverage(Waveform * wf, uint32_t L);
+Waveform * MWD(Waveform * wf,  double f, uint32_t M, uint32_t L);
 
 #endif /* end of include guard: ALGO_HH_8GE72YHP */
