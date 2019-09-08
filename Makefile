@@ -1,8 +1,8 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -g
-LDFLAGS =
 CC = gcc
 CCFLAGS = -std=c11 -g -Wall
+LDFLAGS =
 
 TARGET = mwd
 

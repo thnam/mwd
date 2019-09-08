@@ -2,14 +2,14 @@
 #define ALGO_HH_8GE72YHP
 
 #include <stdint.h>
-typedef struct Waveform {
+typedef struct Vector {
   uint32_t size;
   double samples[];
-} Waveform;
+} Vector;
 
-Waveform * Deconvolute(Waveform * wf, double f);
-Waveform * OffsetDifferentiate(Waveform * wf, uint32_t M);
-Waveform * MovingAverage(Waveform * wf, uint32_t L);
-Waveform * MWD(Waveform * wf,  double f, uint32_t M, uint32_t L);
+Vector * Deconvolute(Vector * wf, double f);
+Vector * OffsetDifferentiate(Vector * wf, uint32_t M);
+Vector * MovingAverage(Vector * wf, uint32_t L);
+Vector * MWD(Vector * wf,  double f, uint32_t M, uint32_t L);
 
 #endif /* end of include guard: ALGO_HH_8GE72YHP */

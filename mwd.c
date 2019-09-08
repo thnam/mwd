@@ -6,12 +6,12 @@
 
 #define NsamplesMax 1000 * 1000
 
-Waveform * ReadWF(const char * filename);
+Vector * ReadWF(const char * filename);
 
 int main(int argc, char *argv[]) {
-  Waveform * wf = ReadWF("samples/purdue_full_wf0.csv");
+  Vector * wf = ReadWF("samples/purdue_full_wf0.csv");
 
-  Waveform * mwd = MWD(wf, 0.999993, 6000, 600);
+  Vector * mwd = MWD(wf, 0.999993, 6000, 600);
   for (uint32_t i = 0; i < mwd->size; ++i) {
     printf("%.8lf\n", mwd->samples[i]);
   }
@@ -19,9 +19,9 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-Waveform * ReadWF(const char *filename){
+Vector * ReadWF(const char *filename){
 
-  Waveform * wf0 = (Waveform*) malloc(sizeof(uint32_t) + NsamplesMax * sizeof(double));
+  Vector * wf0 = (Vector*) malloc(sizeof(uint32_t) + NsamplesMax * sizeof(double));
   FILE *fp = fopen(filename, "r");
   if (fp == NULL) {
     printf("Cannot open file.\n");

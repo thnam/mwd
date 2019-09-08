@@ -2,13 +2,13 @@
 #include<stdlib.h>
 #include<stdio.h>
 
-Waveform * Deconvolute(Waveform * wf, double f){
+Vector * Deconvolute(Vector * wf, double f){
   if (wf->size <= 2) {
     return wf;
   }
 
   // the output waveform has the same length as that of the input
-  Waveform * A = (Waveform*)malloc(sizeof(uint32_t) + sizeof(double) * wf->size);
+  Vector * A = (Vector*)malloc(sizeof(uint32_t) + sizeof(double) * wf->size);
 
   A->samples[0] = wf->samples[0];
   A->size = 1;
@@ -21,13 +21,13 @@ Waveform * Deconvolute(Waveform * wf, double f){
   return A;
 }
 
-Waveform * OffsetDifferentiate(Waveform * wf, uint32_t M){
+Vector * OffsetDifferentiate(Vector * wf, uint32_t M){
   if (wf->size <= M) {
     return wf;
   }
 
   // size of original waveform less M samples
-  Waveform * D = (Waveform *) malloc(sizeof(uint32_t) + (wf->size - M) * sizeof(double));
+  Vector * D = (Vector *) malloc(sizeof(uint32_t) + (wf->size - M) * sizeof(double));
   D->size = 0;
   for (uint32_t i = M; i < wf->size; ++i) {
     D->samples[i - M] = wf->samples[i] - wf->samples[i - M];
@@ -36,13 +36,13 @@ Waveform * OffsetDifferentiate(Waveform * wf, uint32_t M){
   return D;
 }
 
-Waveform * MovingAverage(Waveform * wf, uint32_t L){
+Vector * MovingAverage(Vector * wf, uint32_t L){
   if (wf->size <= L) {
     return wf;
   }
 
   double sum = 0.;
-  Waveform * MA = (Waveform *) malloc(sizeof(uint32_t) + (wf->size - L) * sizeof(double));
+  Vector * MA = (Vector *) malloc(sizeof(uint32_t) + (wf->size - L) * sizeof(double));
   for (uint32_t i = 0; i < L; ++i) {
     sum += wf->samples[i];
   }
@@ -57,7 +57,7 @@ Waveform * MovingAverage(Waveform * wf, uint32_t L){
   return MA;
 }
 
-Waveform * MWD(Waveform * wf,  double f, uint32_t M, uint32_t L){
+Vector * MWD(Vector * wf,  double f, uint32_t M, uint32_t L){
   return MovingAverage(
       OffsetDifferentiate(Deconvolute(wf, f), M), L);
 }
