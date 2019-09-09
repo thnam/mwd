@@ -22,20 +22,20 @@ static void HandleError( cudaError_t err, const char *file, int line ) {
   }
 }
 
-__global__ void vecAdd(double *a, double *b, double *c, int n) {
-  // Get our global thread ID
-  int id = blockIdx.x*blockDim.x+threadIdx.x;
-  // Make sure we do not go out of bounds
-  if (id < n)
-    c[id] = a[id] + b[id];
+__global__ void gpuAdd(double *a, double *b, double *c, uint32_t n) {
+  uint32_t gId = blockIdx.x*blockDim.x+threadIdx.x; // global id
+  if (gId < n)
+    c[gId] = a[gId] + b[gId];
 }
 
-__global__ void vecMultiply(double *a, double *b, double f, int n) {
-  // Get our global thread ID
-  int id = blockIdx.x*blockDim.x+threadIdx.x;
-  // Make sure we do not go out of bounds
-  if (id < n)
-    b[id] = 1 * a[id];
+__global__ void gpuMultiply(double *a, double *b, double f, uint32_t n) {
+  uint32_t gId = blockIdx.x*blockDim.x+threadIdx.x; // global id
+  if (gId < n)
+    b[gId] = f * a[gId];
+}
+
+__global__ void gpuMovingAverage(double *a, double *b, uint32_t window,
+    uint32_t n) {
 }
 
 int main(int argc, char *argv[]) {
@@ -44,8 +44,12 @@ int main(int argc, char *argv[]) {
   long int stop = getMicrotime();
   printf("Reading time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
+  double f = 0.999993;
+  uint32_t M = 6000;
+  uint32_t L = 600;
+
   start = getMicrotime();
-  Vector * mwd = MWD(wf, 0.999993, 6000, 600);
+  Vector * mwd = MWD(wf, f, M, L);
   stop = getMicrotime();
   printf("CPU MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
@@ -59,7 +63,6 @@ int main(int argc, char *argv[]) {
   double * devWf0;
   double * devMWD;
   double * hostMWD = (double *) malloc(nBytes);
-  double f = 0.999993;
   char SupportedBlocks[100];
 
   int blockSize, gridSize;
@@ -105,7 +108,7 @@ int main(int argc, char *argv[]) {
 	HANDLE_ERROR(cudaMemcpy(devWf0, wf->data, nBytes, cudaMemcpyHostToDevice));
 
 	cudaEventRecord(time2, 0);		// Time stamp after the CPU --> GPU tfr is done
-  vecMultiply<<<gridSize, blockSize>>>(devWf0, devMWD, f, 1000);
+  gpuMultiply<<<gridSize, blockSize>>>(devWf0, devMWD, f, wf->size);
   cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr,
@@ -114,7 +117,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	cudaEventRecord(time3, 0);
-  cudaMemcpy(hostMWD, devMWD, nBytes, cudaMemcpyDeviceToHost);
+  HANDLE_ERROR(cudaMemcpy(hostMWD, devMWD, nBytes, cudaMemcpyDeviceToHost));
   cudaEventRecord(time4, 0);
 
 	cudaEventSynchronize(time1);
@@ -127,11 +130,16 @@ int main(int argc, char *argv[]) {
 	cudaEventElapsedTime(&tfrGPUtoCPU, time3, time4);
 
 	cudaStatus = cudaDeviceSynchronize();
-	//checkError(cudaGetLastError());	// screen for errors in kernel launches
+  /* checkError(cudaGetLastError());	// screen for errors in kernel launches */
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "\n Program failed after cudaDeviceSynchronize()!");
 		exit(EXIT_FAILURE);
 	}
+
+  uint32_t i = 0;
+  for (i = 0; i < wf->size; ++i) {
+    printf("%lf %lf\n", wf->data[i], hostMWD[i]);
+  }
 
 	printf("CPU->GPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
       tfrCPUtoGPU, DATAMB(nBytes), DATABW(nBytes, tfrCPUtoGPU));
@@ -145,10 +153,6 @@ int main(int argc, char *argv[]) {
       DATABW((2 * nBytes + 2*nBytes), totalTime));
   printf("--------------------------------------------------------------------------\n\n");
 
-  uint32_t i = 0;
-  for (i = 0; i < wf->size; ++i) {
-    printf("%lf %lf\n", wf->data[i], hostMWD[i]);
-  }
 
   // done
   cudaFree(devWf0);
