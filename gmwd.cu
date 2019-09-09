@@ -12,6 +12,8 @@ Vector * ReadWF(const char * filename);
 long int getMicrotime();
 
 #define HANDLE_ERROR( err ) ( HandleError( err, __FILE__, __LINE__ ) )
+#define DATAMB(bytes)			(bytes/1024/1024)
+#define DATABW(bytes,timems)	((float)bytes/(timems * 1.024*1024.0*1024.0))
 
 static void HandleError( cudaError_t err, const char *file, int line ) {
   if (err != cudaSuccess) {
@@ -33,7 +35,7 @@ __global__ void vecMultiply(double *a, double *b, double f, int n) {
   int id = blockIdx.x*blockDim.x+threadIdx.x;
   // Make sure we do not go out of bounds
   if (id < n)
-    b[id] = f * a[id];
+    b[id] = 1 * a[id];
 }
 
 int main(int argc, char *argv[]) {
@@ -49,18 +51,21 @@ int main(int argc, char *argv[]) {
 
   // GPU things
 	cudaEvent_t		time1, time2, time3, time4;
-	cudaError_t		cudaStatus, cudaStatus2;
-	/* cudaDeviceProp	GPUprop; */
+	float totalTime, tfrCPUtoGPU, tfrGPUtoCPU, kernelExecutionTime; // GPU code run times
+	cudaError_t		cudaStatus;
+  cudaDeviceProp	GPUprop;
   uint32_t nBytes = wf->size * sizeof(double);
   /* double * hostWf0 = wf->data; */
   double * devWf0;
   double * devMWD;
   double * hostMWD = (double *) malloc(nBytes);
   double f = 0.999993;
+  char SupportedBlocks[100];
 
   int blockSize, gridSize;
   blockSize = 1024;
-  gridSize = (int) ceil((float)wf->size / blockSize);
+  gridSize = (int) ceil((float)nBytes / blockSize);
+  printf("blockSize %d, gridSize %d\n", blockSize, gridSize);
 
   cudaEventCreate(&time1);
   cudaEventCreate(&time2);
@@ -68,28 +73,81 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&time4);
 
   cudaEventRecord(time1, 0);
-  cudaStatus = cudaMalloc((void **) &devWf0, wf->size);
-  cudaStatus2 = cudaMalloc((void **) &devMWD, wf->size);
-	if ((cudaStatus != cudaSuccess) || (cudaStatus2 != cudaSuccess)){
-		fprintf(stderr, "cudaMalloc failed! Can't allocate GPU memory");
+	int NumGPUs = 0;
+	cudaGetDeviceCount(&NumGPUs);
+	if (NumGPUs == 0){
+		printf("\nNo CUDA Device is available\n");
 		exit(EXIT_FAILURE);
 	}
+	cudaStatus = cudaSetDevice(0);
 
-	cudaStatus = cudaMemcpy(devWf0, wf->data, nBytes, cudaMemcpyHostToDevice);
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaMemcpy  CPU to GPU  failed!");
+		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
 		exit(EXIT_FAILURE);
 	}
+	cudaGetDeviceProperties(&GPUprop, 0);
+	uint32_t SupportedKBlocks = (uint32_t)GPUprop.maxGridSize[0]
+    * (uint32_t)GPUprop.maxGridSize[1] * (uint32_t)GPUprop.maxGridSize[2] / 1024;
+	uint32_t SupportedMBlocks = SupportedKBlocks / 1024;
+	sprintf(SupportedBlocks, "%u %c",
+      (SupportedMBlocks >= 5) ? SupportedMBlocks : SupportedKBlocks,
+      (SupportedMBlocks >= 5) ? 'M' : 'K');
+	uint32_t MaxThrPerBlk = (uint32_t)GPUprop.maxThreadsPerBlock;
+
+	printf("--------------------------------------------------------------------------\n");
+	printf("%s    ComputeCapab=%d.%d  [max %s blocks; %d thr/blk] \n", 
+			GPUprop.name, GPUprop.major, GPUprop.minor, SupportedBlocks, MaxThrPerBlk);
+	printf("--------------------------------------------------------------------------\n");
+
+  HANDLE_ERROR(cudaMalloc((void **) &devWf0, nBytes));
+  HANDLE_ERROR(cudaMalloc((void **) &devMWD, nBytes));
+
+	HANDLE_ERROR(cudaMemcpy(devWf0, wf->data, nBytes, cudaMemcpyHostToDevice));
 
 	cudaEventRecord(time2, 0);		// Time stamp after the CPU --> GPU tfr is done
-  vecMultiply<<<gridSize, blockSize>>>(devWf0, devMWD, f, wf->size);
-  cudaEventRecord(time3, 0);
+  vecMultiply<<<gridSize, blockSize>>>(devWf0, devMWD, f, 1000);
+  cudaStatus = cudaDeviceSynchronize();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr,
+        "\ncudaDeviceSynchronize returned error code %d after launching the kernel!\n", cudaStatus);
+		exit(EXIT_FAILURE);
+	}
+
+	cudaEventRecord(time3, 0);
   cudaMemcpy(hostMWD, devMWD, nBytes, cudaMemcpyDeviceToHost);
   cudaEventRecord(time4, 0);
 
+	cudaEventSynchronize(time1);
+	cudaEventSynchronize(time2);
+	cudaEventSynchronize(time3);
+	cudaEventSynchronize(time4);
+	cudaEventElapsedTime(&totalTime, time1, time4);
+	cudaEventElapsedTime(&tfrCPUtoGPU, time1, time2);
+	cudaEventElapsedTime(&kernelExecutionTime, time2, time3);
+	cudaEventElapsedTime(&tfrGPUtoCPU, time3, time4);
+
+	cudaStatus = cudaDeviceSynchronize();
+	//checkError(cudaGetLastError());	// screen for errors in kernel launches
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "\n Program failed after cudaDeviceSynchronize()!");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("CPU->GPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
+      tfrCPUtoGPU, DATAMB(nBytes), DATABW(nBytes, tfrCPUtoGPU));
+	printf("Kernel Execution    =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
+      kernelExecutionTime, DATAMB(2*nBytes), DATABW(2*nBytes, kernelExecutionTime));
+	printf("GPU->CPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
+      tfrGPUtoCPU, DATAMB(nBytes), DATABW(nBytes, tfrGPUtoCPU));
+	printf("--------------------------------------------------------------------------\n");
+	printf("Total time elapsed  =%7.2f ms       %4d MB  ...  %6.2f GB/s\n",
+      totalTime, DATAMB((2 * nBytes + 2*nBytes)),
+      DATABW((2 * nBytes + 2*nBytes), totalTime));
+  printf("--------------------------------------------------------------------------\n\n");
+
   uint32_t i = 0;
   for (i = 0; i < wf->size; ++i) {
-    printf("%lf\n", devMWD[i]);
+    printf("%lf %lf\n", wf->data[i], hostMWD[i]);
   }
 
   // done

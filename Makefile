@@ -4,7 +4,7 @@ CC = gcc
 CCFLAGS = -std=c11 -g -Wall
 LDFLAGS =
 NVCC = nvcc
-CUFLAGS =
+CUFLAGS = -g -G
 CULIBS = -L/usr/local/cuda/lib64
 CUINCS = -I/usr/local/cuda/include
 
