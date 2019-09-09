@@ -26,7 +26,6 @@ void VectorSet(Vector *vector, uint32_t index, double value){}
 void VectorExpandIfFull(Vector *vector){
   if (vector->size >= vector->capacity) {
     vector->capacity = (int)(VECTOR_GROWING_FACTOR * vector->capacity);
-    /* vector = (Vector *) realloc(vector, 2 * sizeof(uint32_t) + sizeof(double) * vector->capacity); */
     vector->data = realloc(vector->data, sizeof(double) * vector->capacity);
   }
 }

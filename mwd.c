@@ -5,8 +5,6 @@
 #include "algo.h"
 #include "vector.h"
 
-#define NdataMax 1000 * 1000
-
 Vector * ReadWF(const char * filename);
 
 int main(int argc, char *argv[]) {
@@ -38,4 +36,3 @@ Vector * ReadWF(const char *filename){
   fclose(fp);
   return wf0;
 }
-
