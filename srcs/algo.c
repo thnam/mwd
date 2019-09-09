@@ -1,6 +1,7 @@
 #include "algo.h"
 #include<stdlib.h>
 #include<stdio.h>
+#include<string.h>
 
 Vector * Deconvolute(Vector * wf, double f){
   if (wf->size <= 2) {
@@ -73,7 +74,7 @@ Vector * VectorInit(){
 
 
 void VectorAppend(Vector *vector, double value){
-  VectorExpand(vector);
+  VectorExpandIfFull(vector);
   vector->data[vector->size++] = value;
 }
 
@@ -82,7 +83,7 @@ double VectorGet(Vector *vector, uint32_t index){
 }
 
 void VectorSet(Vector *vector, uint32_t index, double value){}
-void VectorExpand(Vector *vector){
+void VectorExpandIfFull(Vector *vector){
   if (vector->size >= vector->capacity) {
     vector->capacity = (int)(VECTOR_GROWING_FACTOR * vector->capacity);
     /* vector = (Vector *) realloc(vector, 2 * sizeof(uint32_t) + sizeof(double) * vector->capacity); */
@@ -90,7 +91,25 @@ void VectorExpand(Vector *vector){
   }
 }
 
+void VectorExpand(Vector *vector){
+    vector->capacity = (int)(VECTOR_GROWING_FACTOR * vector->capacity);
+    vector->data = realloc(vector->data, sizeof(double) * vector->capacity);
+}
+
 void VectorFree(Vector *vector){
   free(vector->data);
   free(vector);
+}
+
+void VectorCopy(Vector *vd, Vector *vs, uint32_t start, uint32_t stop){
+  if ((start >= stop)|| (stop > vs->size) ) {
+    return;
+  }
+  
+  while (vd->capacity < (stop - start)){
+    VectorExpand(vd);
+  }
+
+  memcpy(vd->data, vs->data + start, (stop - start) * sizeof(double));
+  vd->size = stop - start;
 }

@@ -20,7 +20,9 @@ Vector * VectorInit();
 void VectorAppend(Vector *vector, double value);
 double VectorGet(Vector *vector, uint32_t index);
 void VectorSet(Vector *vector, uint32_t index, double value);
+void VectorExpandIfFull(Vector *vector);
 void VectorExpand(Vector *vector);
 void VectorFree(Vector *vector);
+void VectorCopy(Vector *dest, Vector *src, uint32_t start, uint32_t stop);
 
 #endif /* end of include guard: ALGO_HH_8GE72YHP */
