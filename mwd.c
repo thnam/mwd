@@ -13,9 +13,11 @@ int main(int argc, char *argv[]) {
 
   Vector * mwd = MWD(wf, 0.999993, 6000, 600);
   for (uint32_t i = 0; i < mwd->size; ++i) {
-    printf("%.9lf\n", mwd->data[i]);
+    /* printf("%.9lf\n", mwd->data[i]); */
   }
 
+  VectorFree(mwd);
+  VectorFree(wf);
   return 0;
 }
 
@@ -31,6 +33,8 @@ Vector * ReadWF(const char *filename){
   while (fscanf(fp, "%lf,%lf", &val0, &val1) == 2) {
     VectorAppend(wf0, val1);
   }
+
+  fclose(fp);
   return wf0;
 }
 

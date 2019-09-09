@@ -54,12 +54,16 @@ Vector * MovingAverage(Vector * wf, uint32_t L){
 }
 
 Vector * MWD(Vector * wf,  double f, uint32_t M, uint32_t L){
-  return MovingAverage(
-      OffsetDifferentiate(Deconvolute(wf, f), M), L);
+  Vector * deconv = Deconvolute(wf, f);
+  Vector * odiff = OffsetDifferentiate(deconv, M);
+  Vector * mavg = MovingAverage(odiff, L);
+  VectorFree(odiff);
+  VectorFree(deconv);
+  return mavg;
 }
 
 Vector * VectorInit(){
-  Vector * A = (Vector*)malloc(2*sizeof(uint32_t)); 
+  Vector * A = (Vector*)malloc(sizeof(Vector)); 
   A->size = 0;
   A->capacity = VECTOR_INITIAL_CAPACITY;
   A->data = malloc(sizeof(double) * VECTOR_INITIAL_CAPACITY);
@@ -86,4 +90,7 @@ void VectorExpand(Vector *vector){
   }
 }
 
-void VectorFree(Vector *vector){}
+void VectorFree(Vector *vector){
+  free(vector->data);
+  free(vector);
+}
