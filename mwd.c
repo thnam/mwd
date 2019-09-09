@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "algo.h"
+#include "vector.h"
 
 #define NdataMax 1000 * 1000
 
@@ -13,7 +14,7 @@ int main(int argc, char *argv[]) {
 
   Vector * mwd = MWD(wf, 0.999993, 6000, 600);
   for (uint32_t i = 0; i < mwd->size; ++i) {
-    /* printf("%.9lf\n", mwd->data[i]); */
+    printf("%.9lf\n", mwd->data[i]);
   }
 
   VectorFree(mwd);
