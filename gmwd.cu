@@ -2,7 +2,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <thrust/scan.h>
+#include <thrust/transform.h>
+#include <thrust/functional.h>
+#include <thrust/sequence.h>
+#include <thrust/random.h>
 
+#include <thrust/device_vector.h>
 extern "C"{
 #include "algo.h"
 #include "vector.h"
@@ -11,61 +17,70 @@ extern "C"{
 Vector * ReadWF(const char * filename);
 long int getMicrotime();
 
+#define DATAMB(bytes)			(bytes/1024/1024)
+#define DATABW(bytes,timems)	((float)bytes/(timems * 1.024*1024.0*1024.0))
 #define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true) {
-  if (code != cudaSuccess)
-  {
+  if (code != cudaSuccess) {
     fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-    if (abort) exit(code);
+    if (abort) 
+      exit(code);
   }
 }
 
-int iDivUp(int a, int b){ return ((a % b) != 0) ? (a / b + 1) : (a / b); }
+template <typename T>
+struct minus_and_divide : public thrust::binary_function<T,T,T> {
+    T w;
+    minus_and_divide(T w) : w(w) {}
+    __host__ __device__
+    T operator()(const T& a, const T& b) const {
+        return (a - b) / w;
+    }
+};
 
-#define DATAMB(bytes)			(bytes/1024/1024)
-#define DATABW(bytes,timems)	((float)bytes/(timems * 1.024*1024.0*1024.0))
-
-__global__ void gpuAdd(double *a, double *b, double *c, uint32_t n) {
-  uint32_t gId = blockIdx.x*blockDim.x + threadIdx.x; // global id
-  if (gId < n)
-    c[gId] = a[gId] + b[gId];
+template <typename InputVector, typename OutputVector>
+void simple_moving_average(const InputVector& data, size_t w, OutputVector& output) {
+    typedef typename InputVector::value_type T;
+    if (data.size() < w)
+        return;
+    // allocate storage for cumulative sum
+    thrust::device_vector<T> temp(data.size() + 1);
+    // compute cumulative sum
+    thrust::exclusive_scan(data.begin(), data.end(), temp.begin());
+    temp[data.size()] = data.back() + temp[data.size() - 1];
+    // compute moving averages from cumulative sum
+    thrust::transform(temp.begin() + w, temp.end(), temp.begin(), output.begin(), minus_and_divide<T>(T(w)));
 }
 
-__global__ void gpuMultiply(double *a, double *b, double f, uint32_t n) {
-  uint32_t gId = blockIdx.x*blockDim.x + threadIdx.x; // global id
-  if (gId < n)
-    b[gId] = f * a[gId];
-}
-
-__global__ void gpuMovingAverage(double *a, double *b, uint32_t window, uint32_t n) {
-}
+__global__ void gpuAdd(double *a, double *b, double *c, uint32_t n);
+__global__ void gpuSubtract(double *a, double *b, double *c, uint32_t n);
+__global__ void gpuScale(double *a, double *b, double f, uint32_t n);
+__global__ void gpuMovingAverage(double *a, double *b, uint32_t window, uint32_t n);
 
 int main(int argc, char *argv[]) {
   long int start = getMicrotime();
-  Vector * wf = ReadWF("samples/purdue_full_wf0.csv");
+  Vector * hostWf0 = ReadWF("samples/purdue_full_wf0.csv");
   long int stop = getMicrotime();
   printf("Reading time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
+  uint32_t nSamples = hostWf0->size;
+  uint32_t nBytes = nSamples * sizeof(double);
   double f = 0.999993;
   uint32_t M = 6000;
   uint32_t L = 600;
 
+  // CPU serial caculation
   start = getMicrotime();
-  Vector * mwd = MWD(wf, f, M, L);
+  Vector * mwd = MWD(hostWf0, f, M, L);
   stop = getMicrotime();
   printf("CPU MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
-  // GPU things
-	cudaEvent_t		time1, time2, time3, time4;
-	float totalTime, tfrCPUtoGPU, tfrGPUtoCPU, kernelExecutionTime; // GPU code run times
-	cudaError_t		cudaStatus;
-  cudaDeviceProp	GPUprop;
-  uint32_t nBytes = wf->size * sizeof(double);
-  /* double * hostWf0 = wf->data; */
-  double * devWf0;
-  double * devMWD;
-  double * hostMWD = (double *) malloc(nBytes);
-  char SupportedBlocks[100];
+  // GPU things, still need to precompute the deconvolution
+  cudaEvent_t		time1, time2, time3, time4;
+  float totalTime, tfrCPUtoGPU, tfrGPUtoCPU, kernelExecutionTime; // GPU code run times
+  cudaError_t		cudaStatus;
+
+  thrust::device_vector<double> devMWD(nSamples);
 
   int blockSize, gridSize;
   blockSize = 1024;
@@ -77,91 +92,75 @@ int main(int argc, char *argv[]) {
   cudaEventCreate(&time3);
   cudaEventCreate(&time4);
 
+  start = getMicrotime();
+  Vector * hostDeconv = Deconvolute(hostWf0, f);
+  stop = getMicrotime();
+  printf("Deconv precomputing time %ld usec = %.2f ms\n", (stop - start),
+      (float)(stop - start)/1000);
+
   cudaEventRecord(time1, 0);
-	int NumGPUs = 0;
-	cudaGetDeviceCount(&NumGPUs);
-	if (NumGPUs == 0){
-		printf("\nNo CUDA Device is available\n");
-		exit(EXIT_FAILURE);
-	}
-	cudaStatus = cudaSetDevice(0);
+  thrust::device_vector<double> devDeconv(hostDeconv->data, hostDeconv->data + nSamples);
+  thrust::device_vector<double> devOdiff(nSamples - M);
+  cudaEventRecord(time2, 0);		// Time stamp after the CPU --> GPU tfr is done
 
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-		exit(EXIT_FAILURE);
-	}
-	cudaGetDeviceProperties(&GPUprop, 0);
-	uint32_t SupportedKBlocks = (uint32_t)GPUprop.maxGridSize[0]
-    * (uint32_t)GPUprop.maxGridSize[1] * (uint32_t)GPUprop.maxGridSize[2] / 1024;
-	uint32_t SupportedMBlocks = SupportedKBlocks / 1024;
-	sprintf(SupportedBlocks, "%u %c",
-      (SupportedMBlocks >= 5) ? SupportedMBlocks : SupportedKBlocks,
-      (SupportedMBlocks >= 5) ? 'M' : 'K');
-	uint32_t MaxThrPerBlk = (uint32_t)GPUprop.maxThreadsPerBlock;
+  // start calculating
+  gpuSubtract<<<gridSize, blockSize>>>(
+      thrust::raw_pointer_cast(devDeconv.data() + M),
+      thrust::raw_pointer_cast(devDeconv.data()),
+      thrust::raw_pointer_cast(devOdiff.data()), nSamples - M);
 
-	printf("--------------------------------------------------------------------------\n");
-	printf("%s    ComputeCapab=%d.%d  [max %s blocks; %d thr/blk] \n", 
-			GPUprop.name, GPUprop.major, GPUprop.minor, SupportedBlocks, MaxThrPerBlk);
-	printf("--------------------------------------------------------------------------\n");
-
-  gpuErrChk(cudaMalloc((void **) &devWf0, nBytes));
-  gpuErrChk(cudaMalloc((void **) &devMWD, nBytes));
-
-	gpuErrChk(cudaMemcpy(devWf0, wf->data, nBytes, cudaMemcpyHostToDevice));
-
-	cudaEventRecord(time2, 0);		// Time stamp after the CPU --> GPU tfr is done
-  gpuMultiply<<<gridSize, blockSize>>>(devWf0, devMWD, f, wf->size);
-  cudaStatus = cudaDeviceSynchronize();
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr,
-        "\ncudaDeviceSynchronize returned error code %d after launching the kernel!\n", cudaStatus);
-		exit(EXIT_FAILURE);
-	}
-
-	cudaEventRecord(time3, 0);
-  gpuErrChk(cudaMemcpy(hostMWD, devMWD, nBytes, cudaMemcpyDeviceToHost));
+  gpuErrChk(cudaDeviceSynchronize());
+  cudaEventRecord(time3, 0);
+  thrust::host_vector<double> hostOdiff = devOdiff;
   cudaEventRecord(time4, 0);
 
-	cudaEventSynchronize(time1);
-	cudaEventSynchronize(time2);
-	cudaEventSynchronize(time3);
-	cudaEventSynchronize(time4);
-	cudaEventElapsedTime(&totalTime, time1, time4);
-	cudaEventElapsedTime(&tfrCPUtoGPU, time1, time2);
-	cudaEventElapsedTime(&kernelExecutionTime, time2, time3);
-	cudaEventElapsedTime(&tfrGPUtoCPU, time3, time4);
+  cudaEventSynchronize(time1);
+  cudaEventSynchronize(time2);
+  cudaEventSynchronize(time3);
+  cudaEventSynchronize(time4);
+  cudaEventElapsedTime(&totalTime, time1, time4);
+  cudaEventElapsedTime(&tfrCPUtoGPU, time1, time2);
+  cudaEventElapsedTime(&kernelExecutionTime, time2, time3);
+  cudaEventElapsedTime(&tfrGPUtoCPU, time3, time4);
 
-	cudaStatus = cudaDeviceSynchronize();
-  /* checkError(cudaGetLastError());	// screen for errors in kernel launches */
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "\n Program failed after cudaDeviceSynchronize()!");
-		exit(EXIT_FAILURE);
-	}
+  gpuErrChk(cudaDeviceSynchronize());
 
   uint32_t i = 0;
-  for (i = 0; i < wf->size; ++i) {
-    printf("%lf %lf\n", wf->data[i], hostMWD[i]);
+  Vector * hostOdiff1 = VectorInit();
+  for (i = 0; i < devOdiff.size(); ++i) {
+    VectorAppend(hostOdiff1, devOdiff[i]);
+  }
+  printf("hostOdiff1 size %ld, cap %d\n", hostOdiff1->size,
+      hostOdiff1->capacity);
+
+  start = getMicrotime();
+  Vector * hostDMW = MovingAverage(hostOdiff1, L);
+  stop = getMicrotime();
+  printf("Mavg postcomputing time %ld usec = %.2f ms\n", (stop - start),
+      (float)(stop - start)/1000);
+
+  /* for (i = 0; i < nSamples; ++i) { */
+  for (i = 0; i < 10; ++i) {
+    printf("%lf %lf\n", hostWf0->data[i], hostDMW->data[i]);
   }
 
-	printf("CPU->GPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
+  printf("CPU->GPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
       tfrCPUtoGPU, DATAMB(nBytes), DATABW(nBytes, tfrCPUtoGPU));
-	printf("Kernel Execution    =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
+  printf("Kernel Execution    =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
       kernelExecutionTime, DATAMB(2*nBytes), DATABW(2*nBytes, kernelExecutionTime));
-	printf("GPU->CPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
+  printf("GPU->CPU Transfer   =%7.2f ms  ...  %4d MB  ...  %6.2f GB/s\n",
       tfrGPUtoCPU, DATAMB(nBytes), DATABW(nBytes, tfrGPUtoCPU));
-	printf("--------------------------------------------------------------------------\n");
-	printf("Total time elapsed  =%7.2f ms       %4d MB  ...  %6.2f GB/s\n",
+  printf("--------------------------------------------------------------------------\n");
+  printf("Total time elapsed  =%7.2f ms       %4d MB  ...  %6.2f GB/s\n",
       totalTime, DATAMB((2 * nBytes + 2*nBytes)),
       DATABW((2 * nBytes + 2*nBytes), totalTime));
   printf("--------------------------------------------------------------------------\n\n");
 
 
   // done
-  cudaFree(devWf0);
-  cudaFree(devMWD);
-  free(hostMWD);
   VectorFree(mwd);
-  VectorFree(wf);
+  VectorFree(hostWf0);
+  VectorFree(hostDeconv);
   return 0;
 }
 
@@ -186,4 +185,25 @@ long int getMicrotime(){
   struct timeval currentTime;
   gettimeofday(&currentTime, NULL);
   return currentTime.tv_sec * (int)1e6 + currentTime.tv_usec;
+}
+
+
+__global__ void gpuScale(double *a, double *b, double f, uint32_t n) {
+  uint32_t gId = blockIdx.x*blockDim.x + threadIdx.x; // global id
+  if (gId < n)
+    b[gId] = f * a[gId];
+}
+
+__global__ void gpuAdd(double *a, double *b, double *c, uint32_t n) {
+  uint32_t gId = blockIdx.x*blockDim.x + threadIdx.x; // global id
+  if (gId < n)
+    c[gId] = a[gId] + b[gId];
+}
+
+__global__ void gpuSubtract(double *a, double *b, double *c, uint32_t n) {
+  uint32_t gId = blockIdx.x*blockDim.x + threadIdx.x; // global id
+  if (gId < n)
+    c[gId] = a[gId] - b[gId];
+}
+__global__ void gpuMovingAverage(double *a, double *b, uint32_t window, uint32_t n) {
 }
