@@ -19,14 +19,48 @@ int main(int argc, char *argv[]) {
   long int stop = getMicrotime();
   printf("Reading time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
-  start = getMicrotime();
-  Vector * mwd = MWD(wf, 0.999993, 6000, 600);
-  stop = getMicrotime();
-  printf("MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
-  for (uint32_t i = 0; i < mwd->size; ++i) {
-    /* printf("%.9lf\n", mwd->data[i]); */
+  // big chunk
+  uint32_t nLoops = 1000;
+  long int avgMWDTime = 0;
+  Vector * mwd = NULL;
+  double f = 0.999993;
+  uint32_t M = 6000;
+  uint32_t L = 600;
+
+  for (uint32_t i = 0; i < nLoops; ++i) {
+    start = getMicrotime();
+    mwd = MWD(wf, f, M, L);
+    stop = getMicrotime();
+    avgMWDTime += (stop - start);
   }
 
+  avgMWDTime /= nLoops;
+  printf("chunkSize %u", wf->size);
+  printf(", MWD time %lu usec = %.2f ms\n", avgMWDTime, (float)avgMWDTime/1000);
+
+  // small chunk
+  uint32_t chunkSize = 2500;
+  uint32_t nChunks = wf->size / chunkSize;
+  M = 500;
+  L = 200;
+  nLoops = 100;
+  avgMWDTime = 0;
+  Vector * sMwd = VectorInit();
+  Vector * sWf = VectorInit();
+  for (int j = 0; j < nLoops; ++j) {
+    for (uint32_t i = 0; i < nChunks; ++i) {
+      VectorCopy(sWf, wf, i * chunkSize, chunkSize);
+      start = getMicrotime();
+      sMwd = MWD(sWf, f, M, L);
+      stop = getMicrotime();
+      avgMWDTime += stop - start;
+    }
+  }
+  avgMWDTime /= nLoops * nChunks;
+  printf("chunkSize %u", chunkSize);
+  printf(", MWD time %lu usec = %.2f ms\n", avgMWDTime, (float)avgMWDTime/1000);
+  
+  //
   VectorFree(mwd);
   VectorFree(wf);
   return 0;

@@ -40,15 +40,14 @@ void VectorFree(Vector *vector){
   free(vector);
 }
 
-void VectorCopy(Vector *vd, Vector *vs, uint32_t start, uint32_t stop){
-  if ((start >= stop)|| (stop > vs->size) ) {
+void VectorCopy(Vector *vd, Vector *vs, uint32_t start, uint32_t nElements){
+  if (start > vs->size) {
     return;
   }
-  
-  while (vd->capacity < (stop - start)){
+
+  while (vd->capacity < nElements){
     VectorExpand(vd);
   }
-
-  memcpy(vd->data, vs->data + start, (stop - start) * sizeof(double));
-  vd->size = stop - start;
+  vd->size = nElements;
+  memcpy(vd->data, vs->data + start, nElements * sizeof(double));
 }

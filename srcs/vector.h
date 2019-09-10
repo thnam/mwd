@@ -19,6 +19,6 @@ void VectorSet(Vector *vector, uint32_t index, double value);
 void VectorExpandIfFull(Vector *vector);
 void VectorExpand(Vector *vector);
 void VectorFree(Vector *vector);
-void VectorCopy(Vector *dest, Vector *src, uint32_t start, uint32_t stop);
+void VectorCopy(Vector *vd, Vector *vs, uint32_t start, uint32_t nElements);
 
 #endif /* end of include guard: VECTOR_H_RNBKCSK5 */
