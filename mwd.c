@@ -14,15 +14,16 @@ void Benchmark(Vector * data, uint32_t chunkSize, uint32_t nLoops, double f, uin
   uint32_t nChunks = data->size / chunkSize;
   long int * elapse = (long int *)malloc(sizeof(long int) * nLoops * nChunks);
 
-  Vector * sMwd = VectorInit();
-  Vector * sWf = VectorInit();
   for (uint32_t j = 0; j < nLoops; ++j) {
     for (uint32_t i = 0; i < nChunks; ++i) {
+      Vector * sWf = VectorInit();
       VectorCopy(sWf, data, i * chunkSize, chunkSize);
       long int start = getMicrotime();
-      sMwd = MWD(sWf, f, M, L);
+      Vector * sMwd = MWD(sWf, f, M, L);
       long int stop = getMicrotime();
       elapse[j * nChunks + i] = stop - start;
+      VectorFree(sMwd);
+      VectorFree(sWf);
     }
   }
 
@@ -45,8 +46,6 @@ void Benchmark(Vector * data, uint32_t chunkSize, uint32_t nLoops, double f, uin
       chunkSize, mean, stdDev, mean/chunkSize, stdDev/chunkSize);
 
   free(elapse);
-  VectorFree(sMwd);
-  VectorFree(sWf);
 }
 
 int main(int argc, char *argv[]) {

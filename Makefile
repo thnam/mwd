@@ -22,7 +22,7 @@ CpuObj = $(OBJDIR)/$(CpuTarget).o
 all: $(CpuTarget) $(GpuTarget)
 
 $(CpuTarget): $(OBJS) $(CpuObj)
-	$(CC) -o $@ $(LDFLAGS) $^ 
+	$(CC) -o $@ $^ $(LDFLAGS) 
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	@mkdir -p $(OBJDIR)
