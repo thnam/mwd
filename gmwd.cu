@@ -177,10 +177,12 @@ void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
           thrust::raw_pointer_cast(devDeconv.data() + M),
           thrust::raw_pointer_cast(devDeconv.data()),
           thrust::raw_pointer_cast(devOdiff.data()), nSamples - M);
+      thrust::device_vector<double> devMA(devOdiff.size() - L - 1);
+      simple_moving_average(devOdiff, L, devMA);
 
       gpuErrChk(cudaDeviceSynchronize());
       cudaEventRecord(time3, 0);
-      thrust::host_vector<double> hostOdiff = devOdiff;
+      thrust::host_vector<double> hostDMW = devMA;
       cudaEventRecord(time4, 0);
 
       cudaEventSynchronize(time1);
@@ -194,14 +196,10 @@ void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
 
       gpuErrChk(cudaDeviceSynchronize());
 
-      Vector * hostOdiff1 = VectorInit();
-      for (int k = 0; k < devOdiff.size(); k++) 
-        VectorAppend(hostOdiff1, devOdiff[k]);
-
-      start = getMicrotime();
-      Vector * hostDMW = MovingAverage(hostOdiff1, L);
-      stop = getMicrotime();
-      long int postcomputeTime = stop - start;
+      /* start = getMicrotime(); */
+      /* Vector * hostDMW = MovingAverage(hostOdiff1, L); */
+      /* stop = getMicrotime(); */
+      long int postcomputeTime = 0;
 
       /* printf("nSamples,pre,copy0,gpu,copy1,post"); */
       printf("%u,%6.3f,%6.3f,%6.3f,%6.3f,%6.3f\n", nSamples,
@@ -209,7 +207,7 @@ void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
           tfrGPUtoCPU, (float)postcomputeTime/1000);
       // done
       VectorFree(sWf);
-      VectorFree(hostDMW);
+      /* VectorFree(hostDMW); */
       VectorFree(hostDeconv);
     }
   }
