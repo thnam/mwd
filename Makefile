@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -std=c++11 -g
 CC = gcc
 CCFLAGS = -std=c11 -g -Wall
-LDFLAGS =
+LDFLAGS = -lm
 NVCC = nvcc
 CUFLAGS = -g -G
 CULIBS = -L/usr/local/cuda/lib64
