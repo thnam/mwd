@@ -75,6 +75,7 @@ int main(int argc, char *argv[]) {
   double f = 0.999993;
   uint32_t M = 100;
   uint32_t L = 100;
+  printf("size,mean,stdDev,normMean,normStdDev\n");
   Benchmark(wf, 300, 50, f, M, L);
   Benchmark(wf, 500, 70, f, M, L);
 
