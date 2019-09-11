@@ -80,13 +80,13 @@ int main(int argc, char *argv[]) {
   // GPU things, still need to precompute the deconvolution
 
   printf("nSamples,pre,copy0,gpu,copy1,post\n");
-  Benchmark(hostWf0, hostWf0->size, 1, f, M, L);
-  /* Benchmark(hostWf0, 100000, 100, f, M, L); */
-  /* Benchmark(hostWf0, 50000, 50, f, M, L); */
-  /* Benchmark(hostWf0, 25000, 30, f, M, L); */
-  /* Benchmark(hostWf0, 10000, 20, f, M, L); */
-  /* Benchmark(hostWf0, 5000, 20, f, M, L); */
-  /* Benchmark(hostWf0, 2500, 20, f, M, L); */
+  Benchmark(hostWf0, hostWf0->size, 100, f, M, L);
+  Benchmark(hostWf0, 100000, 100, f, M, L);
+  Benchmark(hostWf0, 50000, 50, f, M, L);
+  Benchmark(hostWf0, 25000, 30, f, M, L);
+  Benchmark(hostWf0, 10000, 20, f, M, L);
+  Benchmark(hostWf0, 5000, 20, f, M, L);
+  Benchmark(hostWf0, 2500, 20, f, M, L);
   // done
   VectorFree(mwd);
   VectorFree(hostWf0);
