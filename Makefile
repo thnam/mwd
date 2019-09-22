@@ -4,12 +4,13 @@ CC = gcc
 CCFLAGS = -std=c11 -g -Wall
 LDFLAGS = -lm
 NVCC = nvcc
-CUFLAGS = -g -G
+CUFLAGS = -O3
 CULIBS = -L/usr/local/cuda/lib64
 CUINCS = -I/usr/local/cuda/include
 
 CpuTarget = mwd
 GpuTarget = gmwd
+TestTarget = test
 
 SRCDIR = ./srcs
 OBJDIR = ./objs
@@ -19,7 +20,7 @@ OBJS = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS))
 
 CpuObj = $(OBJDIR)/$(CpuTarget).o
 
-all: $(CpuTarget) $(GpuTarget)
+all: $(CpuTarget) $(GpuTarget) $(TestTarget)
 
 $(CpuTarget): $(OBJS) $(CpuObj)
 	$(CC) -o $@ $^ $(LDFLAGS) 
@@ -35,6 +36,12 @@ $(OBJDIR)/%.o: %.c
 $(GpuTarget): $(GpuTarget).cu
 	$(NVCC) $(INCS) $(CUINCS) $(CUFLAGS) $(OBJS) $< -o $@
 
+$(TestTarget): $(TestTarget).cu objs/scan.o
+	$(NVCC) $(INCS) $(CUINCS) $(CUFLAGS) $(OBJS) objs/scan.o $< -o $@
+
+objs/scan.o: srcs/scan.cu
+	$(NVCC) $(INCS) -c $< $(CUFLAGS) -o $@
+
 
 clean:
-	rm -rf $(CpuTarget) $(OBJS) $(GpuTarget)
+	rm -rf $(CpuTarget) $(OBJS) $(GpuTarget) $(TestTarget) objs/scan.o
