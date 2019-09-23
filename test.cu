@@ -35,8 +35,8 @@ int main(int argc, char *argv[]) {
 
   // default params
   double f = 0.999993;
-  uint32_t M = 5;
-  uint32_t L = 4;
+  uint32_t M = 400;
+  uint32_t L = 200;
 
   // CPU serial caculation
   start = getMicrotime();
@@ -174,6 +174,10 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
         printf("%010d: %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf\n",
             i, subWaveform->data[i], hostScanSum[i], hostDeconv[i], hostODiff[i],
             hostMWD[i], mavg->data[i]);
+      }
+
+      for (uint32_t i = 0; i < nSamples; ++i) {
+        printf("%.12lf\n", hostMWD[i]);
       }
       // clean up
       VectorFree(subWaveform);
