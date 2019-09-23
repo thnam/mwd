@@ -9,17 +9,23 @@
 #include <thrust/random.h>
 
 #include <thrust/device_vector.h>
+
+#include "prefixScan.h"
+#include "gpuAlgo.h"
+
 extern "C"{
 #include "algo.h"
 #include "vector.h"
 }
-#include "prefixScan.h"
-#include "gpuAlgo.h"
 
 Vector * ReadWF(const char * filename);
 long int getMicrotime();
-void cpu_sum_scan(double* const h_out, const double* const h_in,
-    const size_t numElems);
+
+#define DATAMB(bytes)			(bytes/1024/1024)
+#define DATABW(bytes,timems)	((float)bytes/(timems * 1.024*1024.0*1024.0))
+
+void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
+    uint32_t M, uint32_t L);
 
 int main(int argc, char *argv[]) {
   long int start = getMicrotime();
@@ -27,57 +33,27 @@ int main(int argc, char *argv[]) {
   long int stop = getMicrotime();
   printf("Reading time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
-  uint32_t h_in_len = hostWf0->size;
-
-  double* h_out_blelloch = new double[h_in_len];
-  double* d_in;
-  checkCudaErrors(cudaMalloc(&d_in, sizeof(double) * h_in_len));
-  checkCudaErrors(cudaMemcpy(d_in, hostWf0->data, sizeof(double) * h_in_len,
-        cudaMemcpyHostToDevice));
-  double* d_out_blelloch;
-  checkCudaErrors(cudaMalloc(&d_out_blelloch, sizeof(double) * h_in_len));
-
-  start = std::clock();
-  sum_scan_blelloch(d_out_blelloch, d_in, h_in_len);
-  double  duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
-  std::cout << "GPU time: " << duration << std::endl;
-  checkCudaErrors(cudaMemcpy(h_out_blelloch, d_out_blelloch,
-        sizeof(double) * h_in_len, cudaMemcpyDeviceToHost));
-
-  double * devDeconv;
-  double * devODiff;
-  double * devMWD;
-  checkCudaErrors(cudaMalloc(&devDeconv, h_in_len * sizeof(double)));
-  checkCudaErrors(cudaMalloc(&devODiff, h_in_len * sizeof(double)));
-  checkCudaErrors(cudaMalloc(&devMWD, h_in_len * sizeof(double)));
-  uint32_t blockSize = 1024;
-  uint32_t gridSize = (int) ceil((float)h_in_len / blockSize);
+  // default params
   double f = 0.999993;
-  gpuDeconvolute<<<gridSize, blockSize>>>(d_out_blelloch, d_in, devDeconv, 1 - f,
-      h_in_len);
-  
-  checkCudaErrors(cudaFree(d_out_blelloch));
+  uint32_t M = 5;
+  uint32_t L = 4;
 
-  double* h_out_naive = new double[h_in_len];
-  start = std::clock();
-  cpu_sum_scan(h_out_naive, hostWf0->data, h_in_len);
-  duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
-  std::cout << "CPU time: " << duration << std::endl;
+  // CPU serial caculation
+  start = getMicrotime();
+  Vector * deconv = Deconvolute(hostWf0, f);
+  Vector * odiff = OffsetDifferentiate(deconv, M);
+  Vector * mavg = MovingAverage(odiff, L);
+  stop = getMicrotime();
+  printf("CPU MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
+  // GPU
+  Benchmark(hostWf0, hostWf0->size, 1, f, M, L);
 
-  bool match = true;
-  double tolerance = 1E-4;
-  for (int i = 0; i < h_in_len; ++i)
-  {
-    if ((h_out_naive[i] - h_out_blelloch[i]) > tolerance) {
-      match = false;
-      break;
-    }
-  }
-  std::cout << "Scan sum Match: " << match << std::endl;
-
-
-
+  // done
+  VectorFree(mavg);
+  VectorFree(deconv);
+  VectorFree(odiff);
+  VectorFree(hostWf0);
   return 0;
 }
 
@@ -104,13 +80,116 @@ long int getMicrotime(){
   return currentTime.tv_sec * (int)1e6 + currentTime.tv_usec;
 }
 
-void cpu_sum_scan(double* const h_out, const double* const h_in,
-    const size_t numElems)
-{
-  double run_sum = 0.;
-  for (int i = 0; i < numElems; ++i)
-  {
-    h_out[i] = run_sum;
-    run_sum = run_sum + h_in[i];
+
+void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
+    double f, uint32_t M, uint32_t L){
+  uint32_t nChunks = origWaveform->size / nSamples;
+
+  GpuTimer gTimer;
+
+  for (int j = 0; j < nLoops; j++) {
+    for (int i = 0; i < nChunks; i++) {
+      uint32_t nBytes = nSamples * sizeof(double);
+      Vector * subWaveform = VectorInit();
+      VectorCopy(subWaveform, origWaveform, i * nSamples, nSamples);
+
+      // CPU result, for verification
+      Vector * deconv = Deconvolute(subWaveform, f);
+      Vector * odiff = OffsetDifferentiate(deconv, M);
+      Vector * mavg = MovingAverage(odiff, L);
+
+      uint32_t blockSize = 1024;
+      uint32_t gridSize = (int) ceil((float)nBytes / blockSize);
+
+      // prepare device data
+      double * devInput;
+      double * devScanSum;
+      double * devDeconv;
+      double * devODiff;
+      double * devMWD;
+      checkCudaErrors(cudaMalloc(&devInput, nBytes));
+      checkCudaErrors(cudaMalloc(&devScanSum, nBytes));
+      checkCudaErrors(cudaMalloc(&devDeconv, nBytes));
+      checkCudaErrors(cudaMalloc(&devODiff, nBytes));
+      checkCudaErrors(cudaMalloc(&devMWD, nBytes));
+
+      gTimer.Start();
+      checkCudaErrors(cudaMemcpy(devInput, subWaveform->data, nBytes, cudaMemcpyHostToDevice));
+      gTimer.Stop();
+      std::cout << "Host to dev: " << gTimer.Elapsed() << std::endl;
+
+      // 1st step: prefixScan
+      gTimer.Start();
+      sum_scan_blelloch(devScanSum, devInput, nSamples);
+      gpuDeconvolute<<<gridSize, blockSize>>>(devInput, devScanSum, devDeconv, f, nSamples);
+      gTimer.Stop();
+      std::cout << "Deconv: " << gTimer.Elapsed() << std::endl;
+
+      gTimer.Start();
+      gpuOffsetDifferentiate<<<gridSize, blockSize>>>(devDeconv, devODiff, M, nSamples);
+      gTimer.Stop();
+      std::cout << "Odiff: " << gTimer.Elapsed() << std::endl;
+
+      gTimer.Start();
+      gpuMovingAverage<<<gridSize, blockSize>>>(devODiff, devMWD, L, nSamples);
+      gTimer.Stop();
+      std::cout << "Moving average: " << gTimer.Elapsed() << std::endl;
+
+      double * hostScanSum = new double[nBytes];
+      double * hostDeconv = new double[nBytes]; 
+      double * hostODiff = new double[nBytes];
+      double * hostMWD = new double[nBytes];
+      gTimer.Start();
+      checkCudaErrors(cudaMemcpy(hostMWD, devMWD, nBytes, cudaMemcpyDeviceToHost));
+      checkCudaErrors(cudaMemcpy(hostScanSum, devScanSum, nBytes, cudaMemcpyDeviceToHost));
+      checkCudaErrors(cudaMemcpy(hostDeconv, devDeconv, nBytes, cudaMemcpyDeviceToHost));
+      checkCudaErrors(cudaMemcpy(hostODiff, devODiff, nBytes, cudaMemcpyDeviceToHost));
+      gTimer.Stop();
+      std::cout << "Dev to host: " << gTimer.Elapsed() << std::endl;
+
+      // 
+      bool match = true;
+      double tolerance = 0.0001;
+      for (uint32_t i = 0; i < nSamples; ++i) {
+        if ((hostDeconv[i] - deconv->data[i]) > tolerance) {
+          printf("Deconv mismatch at %ud\n", i);
+          match = false;
+          break;
+        }
+        if ((hostODiff[i] - odiff->data[i]) > tolerance) {
+          printf("Odiff mismatch at %ud\n", i);
+          match = false;
+          break;
+        }
+        if ((hostMWD[i] - mavg->data[i]) > tolerance) {
+          printf("Mavg mismatch at %ud\n", i);
+          match = false;
+          break;
+        }
+      }
+      printf("All matched!\n");
+
+      printf("i: orig scansum  deconv odiff mwd\n");
+      for (int i = 0; i < 20; ++i) {
+        printf("%010d: %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf\n",
+            i, subWaveform->data[i], hostScanSum[i], hostDeconv[i], hostODiff[i],
+            hostMWD[i], mavg->data[i]);
+      }
+      // clean up
+      VectorFree(subWaveform);
+      VectorFree(mavg);
+      VectorFree(deconv);
+      VectorFree(odiff);
+      checkCudaErrors(cudaFree(devScanSum));
+      checkCudaErrors(cudaFree(devDeconv));
+      checkCudaErrors(cudaFree(devODiff));
+      checkCudaErrors(cudaFree(devMWD));
+      checkCudaErrors(cudaFree(devInput));
+
+      delete [] hostMWD;
+      delete [] hostDeconv;
+      delete [] hostODiff;
+      delete [] hostScanSum;
+    }
   }
 }
