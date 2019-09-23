@@ -6,8 +6,8 @@
 
 #include <cmath>
 
-#include "utils.h"
-#include "timer.h"
+#include "gpuUtils.h"
+#include "gpuTimer.h"
 
 void sum_scan_blelloch(double* const d_out, const double* const d_in,
 	const size_t numElems);

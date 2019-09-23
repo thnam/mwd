@@ -9,6 +9,9 @@
 #include <thrust/random.h>
 
 #include <thrust/device_vector.h>
+
+#include "prefixScan.h"
+
 extern "C"{
 #include "algo.h"
 #include "vector.h"
@@ -19,38 +22,6 @@ long int getMicrotime();
 
 #define DATAMB(bytes)			(bytes/1024/1024)
 #define DATABW(bytes,timems)	((float)bytes/(timems * 1.024*1024.0*1024.0))
-#define gpuErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true) {
-  if (code != cudaSuccess) {
-    fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-    if (abort) 
-      exit(code);
-  }
-}
-
-template <typename T>
-struct minus_and_divide : public thrust::binary_function<T,T,T> {
-    T w;
-    minus_and_divide(T w) : w(w) {}
-    __host__ __device__
-    T operator()(const T& a, const T& b) const {
-        return (a - b) / w;
-    }
-};
-
-template <typename InputVector, typename OutputVector>
-void simple_moving_average(const InputVector& data, size_t w, OutputVector& output) {
-    typedef typename InputVector::value_type T;
-    if (data.size() < w)
-        return;
-    // allocate storage for cumulative sum
-    thrust::device_vector<T> temp(data.size() + 1);
-    // compute cumulative sum
-    thrust::exclusive_scan(data.begin(), data.end(), temp.begin());
-    temp[data.size()] = data.back() + temp[data.size() - 1];
-    // compute moving averages from cumulative sum
-    thrust::transform(temp.begin() + w, temp.end(), temp.begin(), output.begin(), minus_and_divide<T>(T(w)));
-}
 
 __global__ void gpuAdd(double *a, double *b, double *c, uint32_t n);
 __global__ void gpuSubtract(double *a, double *b, double *c, uint32_t n);
@@ -77,16 +48,6 @@ int main(int argc, char *argv[]) {
   stop = getMicrotime();
   printf("CPU MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
-  // GPU things, still need to precompute the deconvolution
-
-  printf("nSamples,pre,copy0,gpu,copy1,post\n");
-  Benchmark(hostWf0, hostWf0->size, 100, f, M, L);
-  Benchmark(hostWf0, 100000, 100, f, M, L);
-  Benchmark(hostWf0, 50000, 50, f, M, L);
-  Benchmark(hostWf0, 25000, 30, f, M, L);
-  Benchmark(hostWf0, 10000, 20, f, M, L);
-  Benchmark(hostWf0, 5000, 20, f, M, L);
-  Benchmark(hostWf0, 2500, 20, f, M, L);
   // done
   VectorFree(mwd);
   VectorFree(hostWf0);
@@ -178,9 +139,8 @@ void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
           thrust::raw_pointer_cast(devDeconv.data()),
           thrust::raw_pointer_cast(devOdiff.data()), nSamples - M);
       thrust::device_vector<double> devMA(devOdiff.size() - L - 1);
-      simple_moving_average(devOdiff, L, devMA);
 
-      gpuErrChk(cudaDeviceSynchronize());
+      checkCudaErrors(cudaDeviceSynchronize());
       cudaEventRecord(time3, 0);
       thrust::host_vector<double> hostDMW = devMA;
       cudaEventRecord(time4, 0);
@@ -194,7 +154,7 @@ void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
       cudaEventElapsedTime(&kernelExecutionTime, time2, time3);
       cudaEventElapsedTime(&tfrGPUtoCPU, time3, time4);
 
-      gpuErrChk(cudaDeviceSynchronize());
+      checkCudaErrors(cudaDeviceSynchronize());
 
       /* start = getMicrotime(); */
       /* Vector * hostDMW = MovingAverage(hostOdiff1, L); */
