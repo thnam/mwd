@@ -26,8 +26,7 @@ int main(int argc, char *argv[]) {
   long int stop = getMicrotime();
   printf("Reading time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
-  /* uint32_t h_in_len = hostWf0->size; */
-  uint32_t h_in_len = 1 << 11;
+  uint32_t h_in_len = hostWf0->size;
 
   double* h_out_blelloch = new double[h_in_len];
   double* d_in;
@@ -50,24 +49,17 @@ int main(int argc, char *argv[]) {
   cpu_sum_scan(h_out_naive, hostWf0->data, h_in_len);
   duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
   std::cout << "CPU time: " << duration << std::endl;
+
   bool match = true;
-  int index_diff = 0;
+  double tolerance = 1E-4;
   for (int i = 0; i < h_in_len; ++i)
   {
-    if (h_out_naive[i] != h_out_blelloch[i])
-    {
+    if ((h_out_naive[i] - h_out_blelloch[i]) > tolerance) {
       match = false;
-      index_diff = i;
       break;
     }
   }
   std::cout << "Match: " << match << std::endl;
-
-  /* for (uint32_t i = 0; i < h_in_len; ++i) { */
-  for (uint32_t i = 0; i < 10; ++i) {
-    printf("%.9lf %.9lf %.9lf\n", hostWf0->data[i],
-        h_out_naive[i], h_out_blelloch[i]);
-  }
 
   return 0;
 }
