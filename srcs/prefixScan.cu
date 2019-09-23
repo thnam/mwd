@@ -1,4 +1,4 @@
-#include "scan.h"
+#include "prefixScan.h"
 
 #define MAX_BLOCK_SZ 1024
 #define NUM_BANKS 32

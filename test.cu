@@ -13,7 +13,7 @@ extern "C"{
 #include "algo.h"
 #include "vector.h"
 }
-#include "scan.h"
+#include "prefixScan.h"
 
 Vector * ReadWF(const char * filename);
 long int getMicrotime();
