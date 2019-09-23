@@ -40,20 +40,19 @@ int main(int argc, char *argv[]) {
 
   // CPU serial caculation
   start = getMicrotime();
-  Vector * mwd = MWD(hostWf0, f, M, L);
+  Vector * deconv = Deconvolute(hostWf0, f);
+  Vector * odiff = OffsetDifferentiate(deconv, M);
+  Vector * mavg = MovingAverage(odiff, L);
   stop = getMicrotime();
   printf("CPU MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
 
-  for (int i = 0; i < 20; ++i) {
-    printf("%010d: %.12lf %.12lf \n", i, hostWf0->data[i], mwd->data[i]);
-  }
-
-  f = 1 - f;
   // GPU
   Benchmark(hostWf0, hostWf0->size, 1, f, M, L);
 
   // done
-  VectorFree(mwd);
+  VectorFree(mavg);
+  VectorFree(deconv);
+  VectorFree(odiff);
   VectorFree(hostWf0);
   return 0;
 }
@@ -94,6 +93,11 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
       Vector * subWaveform = VectorInit();
       VectorCopy(subWaveform, origWaveform, i * nSamples, nSamples);
 
+      // CPU result, for verification
+      Vector * deconv = Deconvolute(subWaveform, f);
+      Vector * odiff = OffsetDifferentiate(deconv, M);
+      Vector * mavg = MovingAverage(odiff, L);
+
       uint32_t blockSize = 1024;
       uint32_t gridSize = (int) ceil((float)nBytes / blockSize);
 
@@ -125,7 +129,7 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
       gpuOffsetDifferentiate<<<gridSize, blockSize>>>(devDeconv, devODiff, M, nSamples);
       gTimer.Stop();
       std::cout << "Odiff: " << gTimer.Elapsed() << std::endl;
-      
+
       gTimer.Start();
       gpuMovingAverage<<<gridSize, blockSize>>>(devODiff, devMWD, L, nSamples);
       gTimer.Stop();
@@ -144,14 +148,38 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
       std::cout << "Dev to host: " << gTimer.Elapsed() << std::endl;
 
       // 
+      bool match = true;
+      double tolerance = 0.0001;
+      for (uint32_t i = 0; i < nSamples; ++i) {
+        if ((hostDeconv[i] - deconv->data[i]) > tolerance) {
+          printf("Deconv mismatch at %ud\n", i);
+          match = false;
+          break;
+        }
+        if ((hostODiff[i] - odiff->data[i]) > tolerance) {
+          printf("Odiff mismatch at %ud\n", i);
+          match = false;
+          break;
+        }
+        if ((hostMWD[i] - mavg->data[i]) > tolerance) {
+          printf("Mavg mismatch at %ud\n", i);
+          match = false;
+          break;
+        }
+      }
+      printf("All matched!\n");
+
       printf("i: orig scansum  deconv odiff mwd\n");
       for (int i = 0; i < 20; ++i) {
-        printf("%010d: %.12lf %.12lf %.12lf %.12lf %.12lf\n",
+        printf("%010d: %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf\n",
             i, subWaveform->data[i], hostScanSum[i], hostDeconv[i], hostODiff[i],
-            hostMWD[i]);
+            hostMWD[i], mavg->data[i]);
       }
       // clean up
       VectorFree(subWaveform);
+      VectorFree(mavg);
+      VectorFree(deconv);
+      VectorFree(odiff);
       checkCudaErrors(cudaFree(devScanSum));
       checkCudaErrors(cudaFree(devDeconv));
       checkCudaErrors(cudaFree(devODiff));

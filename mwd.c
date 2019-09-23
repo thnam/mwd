@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
   Vector * odiff = OffsetDifferentiate(deconv, M);
   Vector * mavg = MovingAverage(odiff, L);
   for (uint32_t i = 0; i < 30; ++i) {
-    printf("%d,%.9lf,%.12lf,%.12lf,%.12lf\n", i, wf->data[i], deconv->data[i],
+    printf("%03d,%.9lf,%.12lf,%.12lf,%.12lf\n", i, wf->data[i], deconv->data[i],
         odiff->data[i], mavg->data[i]);
   }
 

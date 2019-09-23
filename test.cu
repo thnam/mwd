@@ -14,6 +14,7 @@ extern "C"{
 #include "vector.h"
 }
 #include "prefixScan.h"
+#include "gpuAlgo.h"
 
 Vector * ReadWF(const char * filename);
 long int getMicrotime();
@@ -42,6 +43,19 @@ int main(int argc, char *argv[]) {
   std::cout << "GPU time: " << duration << std::endl;
   checkCudaErrors(cudaMemcpy(h_out_blelloch, d_out_blelloch,
         sizeof(double) * h_in_len, cudaMemcpyDeviceToHost));
+
+  double * devDeconv;
+  double * devODiff;
+  double * devMWD;
+  checkCudaErrors(cudaMalloc(&devDeconv, h_in_len * sizeof(double)));
+  checkCudaErrors(cudaMalloc(&devODiff, h_in_len * sizeof(double)));
+  checkCudaErrors(cudaMalloc(&devMWD, h_in_len * sizeof(double)));
+  uint32_t blockSize = 1024;
+  uint32_t gridSize = (int) ceil((float)h_in_len / blockSize);
+  double f = 0.999993;
+  gpuDeconvolute<<<gridSize, blockSize>>>(d_out_blelloch, d_in, devDeconv, 1 - f,
+      h_in_len);
+  
   checkCudaErrors(cudaFree(d_out_blelloch));
 
   double* h_out_naive = new double[h_in_len];
@@ -49,6 +63,7 @@ int main(int argc, char *argv[]) {
   cpu_sum_scan(h_out_naive, hostWf0->data, h_in_len);
   duration = (std::clock() - start) / (double)CLOCKS_PER_SEC;
   std::cout << "CPU time: " << duration << std::endl;
+
 
   bool match = true;
   double tolerance = 1E-4;
@@ -59,7 +74,9 @@ int main(int argc, char *argv[]) {
       break;
     }
   }
-  std::cout << "Match: " << match << std::endl;
+  std::cout << "Scan sum Match: " << match << std::endl;
+
+
 
   return 0;
 }
