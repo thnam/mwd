@@ -72,25 +72,21 @@ int main(int argc, char *argv[]) {
 
   // small chunk
   double f = 0.999993;
-  uint32_t M = 100;
-  uint32_t L = 100;
-  printf("size,mean,stdDev,normMean,normStdDev\n");
-  Benchmark(wf, 300, 50, f, M, L);
-  Benchmark(wf, 500, 70, f, M, L);
+  uint32_t M = 5;
+  uint32_t L = 10;
 
-  f = 0.999993;
-  M = 400;
-  L = 200;
-  Benchmark(wf, 1000, 70, f, M, L);
-  Benchmark(wf, 2500, 100, f, M, L);
-  Benchmark(wf, 5000, 200, f, M, L);
-  Benchmark(wf, 10000, 400, f, M, L);
-  Benchmark(wf, 20000, 800, f, M, L);
-  Benchmark(wf, 50000, 1200, f, M, L);
-  Benchmark(wf, 100000, 2000, f, M, L);
-  Benchmark(wf, 250000, 2000, f, M, L);
+  Vector * deconv = Deconvolute(wf, f);
+  Vector * odiff = OffsetDifferentiate(deconv, M);
+  Vector * mavg = MovingAverage(odiff, L);
+  for (uint32_t i = 0; i < 30; ++i) {
+    printf("%d,%.9lf,%.12lf,%.12lf,%.12lf\n", i, wf->data[i], deconv->data[i],
+        odiff->data[i], mavg->data[i]);
+  }
 
   VectorFree(wf);
+  VectorFree(deconv);
+  VectorFree(odiff);
+  VectorFree(mavg);
   return 0;
 }
 

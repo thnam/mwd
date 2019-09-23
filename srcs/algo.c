@@ -27,7 +27,9 @@ Vector * OffsetDifferentiate(Vector * wf, uint32_t M){
 
   // size of original waveform less M data
   Vector * D = VectorInit();
-  /* Vector * D = (Vector *) malloc(2*sizeof(uint32_t) + (wf->size - M) * sizeof(double)); */
+  for (uint32_t i = 0; i < M; ++i) {
+    VectorAppend(D, wf->data[i]);
+  }
   for (uint32_t i = M; i < wf->size; ++i) {
     VectorAppend(D, wf->data[i] - wf->data[i - M]);
   }
@@ -44,6 +46,7 @@ Vector * MovingAverage(Vector * wf, uint32_t L){
   Vector * MA = VectorInit();
   for (uint32_t i = 0; i < L; ++i) {
     sum += wf->data[i];
+    VectorAppend(MA, wf->data[i]);
   }
   VectorAppend(MA, sum / L);
 
