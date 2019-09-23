@@ -3,6 +3,7 @@
 
 #include <cuda_runtime.h>
 
+// cudaEventElapsedTime gives duration in ms
 struct GpuTimer
 {
   cudaEvent_t start;

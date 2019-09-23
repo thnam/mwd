@@ -37,8 +37,8 @@ $(OBJDIR)/%.o: %.c
 	@mkdir -p $(OBJDIR)
 	$(CC) $(INCS) $(CCFLAGS) -c $< -o $@
 
-$(GpuTarget): $(GpuTarget).cu
-	$(NVCC) $(INCS) $(CUINCS) $(CUFLAGS) $(OBJS) $< -o $@
+$(GpuTarget): $(GpuTarget).cu $(GpuObjs)
+	$(NVCC) $(INCS) $(CUINCS) $(CUFLAGS) $(OBJS) $(GpuObjs) $< -o $@
 
 $(TestTarget): $(TestTarget).cu $(GpuObjs)
 	$(NVCC) $(INCS) $(CUINCS) $(CUFLAGS) $(OBJS) $(GpuObjs) $< -o $@
