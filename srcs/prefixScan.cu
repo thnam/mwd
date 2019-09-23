@@ -377,7 +377,7 @@ void sum_scan_blelloch(double* const d_out,
 
   size_t freeByte, totalByte;
   cudaMemGetInfo(&freeByte, &totalByte);
-  printf("used: %f, free: %f, total' %f MB\n", (totalByte
-        - freeByte)/1024./1024., freeByte/1024./1024., totalByte/1024./1024.);
+  /* printf("used: %f, free: %f, total' %f MB\n", (totalByte */
+        /* - freeByte)/1024./1024., freeByte/1024./1024., totalByte/1024./1024.); */
   checkCudaErrors(cudaFree(d_block_sums));
 }

@@ -2,11 +2,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#include <thrust/scan.h>
-#include <thrust/transform.h>
-#include <thrust/functional.h>
-#include <thrust/sequence.h>
-#include <thrust/random.h>
+
+#include <vector>
+#include <string>
+#include <map>
 
 #include <thrust/device_vector.h>
 
@@ -21,8 +20,7 @@ extern "C"{
 Vector * ReadWF(const char * filename);
 long int getMicrotime();
 
-#define DATAMB(bytes)			(bytes/1024/1024)
-#define DATABW(bytes,timems)	((float)bytes/(timems * 1.024*1024.0*1024.0))
+std::map<std::string, std::vector<double>> timeCost; // msec
 
 void Benchmark(Vector * wf, uint32_t nSamples, uint32_t nLoops, double f,
     uint32_t M, uint32_t L);
@@ -35,24 +33,37 @@ int main(int argc, char *argv[]) {
 
   // default params
   double f = 0.999993;
-  uint32_t M = 5;
-  uint32_t L = 4;
+  uint32_t M = 400;
+  uint32_t L = 200;
+  uint32_t nLoops = 2000;
+  uint32_t nSamples = hostWf0->size;
 
-  // CPU serial caculation
-  start = getMicrotime();
-  Vector * deconv = Deconvolute(hostWf0, f);
-  Vector * odiff = OffsetDifferentiate(deconv, M);
-  Vector * mavg = MovingAverage(odiff, L);
-  stop = getMicrotime();
-  printf("CPU MWD time %ld usec = %ld ms\n", (stop - start), (stop - start)/1000);
+  while ((nSamples > 3 * (M + L)) && (nLoops > 0)){
+    Benchmark(hostWf0, nSamples, nLoops, f, M, L);
+    nSamples /= 2;
+    nLoops /= 2;
+  }
+  M = 40;
+  L = 20;
+  while ((nSamples > 3 * (M + L)) && (nLoops > 0)){
+    Benchmark(hostWf0, nSamples, nLoops, f, M, L);
+    nSamples /= 2;
+    nLoops /= 2;
+  }
 
-  // GPU
-  Benchmark(hostWf0, hostWf0->size, 1, f, M, L);
+  for (auto e : timeCost)
+    std::cout << e.first << ",";
+  std::cout << "\n" << std::flush;
+
+  uint32_t nTests = timeCost["cpu"].size();
+  for (uint32_t i = 0; i < nTests; ++i) {
+    for (auto e : timeCost){
+      std::cout << e.second.at(i) <<",";
+    }
+    std::cout << "\n" << std::flush;
+  }
 
   // done
-  VectorFree(mavg);
-  VectorFree(deconv);
-  VectorFree(odiff);
   VectorFree(hostWf0);
   return 0;
 }
@@ -92,11 +103,15 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
       uint32_t nBytes = nSamples * sizeof(double);
       Vector * subWaveform = VectorInit();
       VectorCopy(subWaveform, origWaveform, i * nSamples, nSamples);
+      timeCost["samples"].push_back(nSamples);
 
       // CPU result, for verification
+      long int start = getMicrotime();
       Vector * deconv = Deconvolute(subWaveform, f);
       Vector * odiff = OffsetDifferentiate(deconv, M);
       Vector * mavg = MovingAverage(odiff, L);
+      long int stop = getMicrotime();
+      timeCost["cpu"].push_back((double)(stop - start) / 1000);
 
       uint32_t blockSize = 1024;
       uint32_t gridSize = (int) ceil((float)nBytes / blockSize);
@@ -116,65 +131,42 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
       gTimer.Start();
       checkCudaErrors(cudaMemcpy(devInput, subWaveform->data, nBytes, cudaMemcpyHostToDevice));
       gTimer.Stop();
-      std::cout << "Host to dev: " << gTimer.Elapsed() << std::endl;
+      timeCost["cudaHost2Dev"].push_back(gTimer.Elapsed());
 
       // 1st step: prefixScan
       gTimer.Start();
       sum_scan_blelloch(devScanSum, devInput, nSamples);
       gpuDeconvolute<<<gridSize, blockSize>>>(devInput, devScanSum, devDeconv, f, nSamples);
       gTimer.Stop();
-      std::cout << "Deconv: " << gTimer.Elapsed() << std::endl;
+      timeCost["cudaDeconv"].push_back(gTimer.Elapsed());
 
       gTimer.Start();
       gpuOffsetDifferentiate<<<gridSize, blockSize>>>(devDeconv, devODiff, M, nSamples);
       gTimer.Stop();
-      std::cout << "Odiff: " << gTimer.Elapsed() << std::endl;
+      timeCost["cudaOdiff"].push_back(gTimer.Elapsed());
 
       gTimer.Start();
       gpuMovingAverage<<<gridSize, blockSize>>>(devODiff, devMWD, L, nSamples);
       gTimer.Stop();
-      std::cout << "Moving average: " << gTimer.Elapsed() << std::endl;
+      timeCost["cudaMavg"].push_back(gTimer.Elapsed());
 
-      double * hostScanSum = new double[nBytes];
-      double * hostDeconv = new double[nBytes]; 
-      double * hostODiff = new double[nBytes];
       double * hostMWD = new double[nBytes];
+
       gTimer.Start();
       checkCudaErrors(cudaMemcpy(hostMWD, devMWD, nBytes, cudaMemcpyDeviceToHost));
-      checkCudaErrors(cudaMemcpy(hostScanSum, devScanSum, nBytes, cudaMemcpyDeviceToHost));
-      checkCudaErrors(cudaMemcpy(hostDeconv, devDeconv, nBytes, cudaMemcpyDeviceToHost));
-      checkCudaErrors(cudaMemcpy(hostODiff, devODiff, nBytes, cudaMemcpyDeviceToHost));
       gTimer.Stop();
-      std::cout << "Dev to host: " << gTimer.Elapsed() << std::endl;
+      timeCost["cudaDev2Host"].push_back(gTimer.Elapsed());
 
       // 
-      bool match = true;
       double tolerance = 0.0001;
       for (uint32_t i = 0; i < nSamples; ++i) {
-        if ((hostDeconv[i] - deconv->data[i]) > tolerance) {
-          printf("Deconv mismatch at %ud\n", i);
-          match = false;
-          break;
-        }
-        if ((hostODiff[i] - odiff->data[i]) > tolerance) {
-          printf("Odiff mismatch at %ud\n", i);
-          match = false;
-          break;
-        }
         if ((hostMWD[i] - mavg->data[i]) > tolerance) {
           printf("Mavg mismatch at %ud\n", i);
-          match = false;
           break;
         }
       }
-      printf("All matched!\n");
+      /* printf("All matched!\n"); */
 
-      printf("i: orig scansum  deconv odiff mwd\n");
-      for (int i = 0; i < 20; ++i) {
-        printf("%010d: %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf\n",
-            i, subWaveform->data[i], hostScanSum[i], hostDeconv[i], hostODiff[i],
-            hostMWD[i], mavg->data[i]);
-      }
       // clean up
       VectorFree(subWaveform);
       VectorFree(mavg);
@@ -187,9 +179,6 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
       checkCudaErrors(cudaFree(devInput));
 
       delete [] hostMWD;
-      delete [] hostDeconv;
-      delete [] hostODiff;
-      delete [] hostScanSum;
     }
   }
 }

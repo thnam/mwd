@@ -48,7 +48,6 @@ Vector * MovingAverage(Vector * wf, uint32_t L){
     sum += wf->data[i];
     VectorAppend(MA, wf->data[i]);
   }
-  MA->data[L-1] = sum / L;
 
   for (uint32_t i = L; i < wf->size; ++i) {
     sum += wf->data[i] - wf->data[i - L];

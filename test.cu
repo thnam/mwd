@@ -154,20 +154,23 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
         if ((hostDeconv[i] - deconv->data[i]) > tolerance) {
           printf("Deconv mismatch at %ud\n", i);
           match = false;
-          break;
+          /* break; */
         }
         if ((hostODiff[i] - odiff->data[i]) > tolerance) {
           printf("Odiff mismatch at %ud\n", i);
           match = false;
-          break;
+          /* break; */
         }
         if ((hostMWD[i] - mavg->data[i]) > tolerance) {
-          printf("Mavg mismatch at %ud\n", i);
+          printf("Mavg mismatch at %u, should be %.10lf, but got %.10lf\n",
+              i, mavg->data[i], hostMWD[i]);
           match = false;
-          break;
+          /* break; */
         }
       }
-      printf("All matched!\n");
+      if (match) {
+        printf("All matched!\n");
+      }
 
       printf("i: orig scansum  deconv odiff mwd\n");
       for (int i = 0; i < 20; ++i) {
@@ -176,9 +179,6 @@ void Benchmark(Vector * origWaveform, uint32_t nSamples, uint32_t nLoops,
             hostMWD[i], mavg->data[i]);
       }
 
-      for (uint32_t i = 0; i < nSamples; ++i) {
-        printf("%.12lf\n", hostMWD[i]);
-      }
       // clean up
       VectorFree(subWaveform);
       VectorFree(mavg);
