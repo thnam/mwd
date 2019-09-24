@@ -44,10 +44,12 @@ Vector * MovingAverage(Vector * wf, uint32_t L){
   double sum = 0.;
   /* Vector * MA = (Vector *) malloc(2*sizeof(uint32_t) + (wf->size - L) * sizeof(double)); */
   Vector * MA = VectorInit();
-  for (uint32_t i = 0; i < L; ++i) {
+  for (uint32_t i = 0; i < L - 1; ++i) {
     sum += wf->data[i];
     VectorAppend(MA, wf->data[i]);
   }
+  sum += wf->data[L-1];
+  VectorAppend(MA, sum / L);
 
   for (uint32_t i = L; i < wf->size; ++i) {
     sum += wf->data[i] - wf->data[i - L];

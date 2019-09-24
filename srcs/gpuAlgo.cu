@@ -19,7 +19,7 @@ __global__ void gpuOffsetDifferentiate(double *a, double *b, uint32_t gap, uint3
 __global__ void gpuMovingAverage(double *a, double *b, uint32_t window, uint32_t n){
   uint32_t gId = blockIdx.x*blockDim.x + threadIdx.x; // global id
   double sum = 0.;
-  if (gId < window) {
+  if (gId < (window - 1)) {
     b[gId] = a[gId];
   }
   else if (gId < n){
